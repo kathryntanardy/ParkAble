@@ -21,6 +21,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 const { height, width } = Dimensions.get("window");
 
+// Update interface to match your backend data structure
 interface ParkingSpot {
   id?: number;
   name: string;
@@ -32,6 +33,9 @@ interface ParkingSpot {
   coordinates: number[]; // [longitude, latitude]
 }
 
+// Base URL for your API - replace with your actual backend URL
+// If running locally on a physical device, use your computer's IP address
+// If using an emulator, you might use http://10.0.2.2:5000 for Android or http://localhost:5000 for iOS
 const API_BASE_URL = "http://127.0.0.1:5000";
 
 export default function HomeScreen() {
@@ -42,14 +46,15 @@ export default function HomeScreen() {
   const [loginModalVisible, setLoginModalVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [userLocation, setUserLocation] = useState<LatLng | null>(null);
-  const [locationError, setLocationError] = useState<string | null>(null);
-  const mapRef = useRef<MapView | null>(null);
-
+  
+  // Set initial position to show the drawer (at full height)
   const panelHeight = height * 0.7;
   const collapsedHeight = height * 0.13;
+  
+  // Animation for the slide-up panel, starting at the expanded position (0)
   const slideUpAnim = useRef(new Animated.Value(height * 0.58)).current;
-
+  
+  // Pan responder for the draggable drawer
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -77,39 +82,6 @@ export default function HomeScreen() {
       },
     })
   ).current;
-
-  useEffect(() => {
-    (async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setLocationError('Permission to access location was denied');
-        return;
-      }
-
-      let location = await Location.getCurrentPositionAsync({});
-      console.log("User Location:", location.coords); // Debug log
-      setUserLocation({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      });
-    })(); 
-  }, []);
-
-  const goToUserLocation = () => {
-    if (!userLocation) {
-      Alert.alert('Location Not Found', 'Please enable location services and try again.');
-      return;
-    }
-
-    if (mapRef.current) {
-      mapRef.current.animateCamera({
-        center: userLocation,
-        zoom: 15,
-      });
-    }
-  };
-
-  // Rest of your existing code...
 
   // Fetch parking spots from the API
   const fetchParkingSpots = async () => {
@@ -311,15 +283,7 @@ export default function HomeScreen() {
           latitudeDelta: 0.01,
           longitudeDelta: 0.01,
         }}
-      >{userLocation && (
-  <Marker
-    coordinate={userLocation}
-    title="You are here"
-    pinColor="blue"
-  >
-    <Ionicons name="location" size={30} color="#4285F4" />
-  </Marker>
-)}
+      >
         {parkingSpots.map((spot, index) => (
           <Marker
             key={spot.id || index}
@@ -445,26 +409,23 @@ export default function HomeScreen() {
                     </Text>
                   )}
                   
-                  {/* Remove this entire block
-  {spot.spotsAvailable !== undefined && (
-    <View style={styles.spotInfoContainer}>
-      <View style={styles.spotIconContainer}>
-        <Text style={styles.spotIconText}>P</Text>
-      </View>
-      <Text style={styles.spotText}>{spot.spotsAvailable} spots available</Text>
-    </View>
-  )}
-*/}
-
-{/* Keep only this block */}
-<View style={styles.accessibleInfoContainer}>
-  <View style={styles.accessibleIconContainer}>
-    <Text style={styles.accessibleIconText}>A</Text>
-  </View>
-  <Text style={styles.spotText}>
-    {spot.freeAccess} accessible spots available
-  </Text>
-</View>
+                  {spot.spotsAvailable !== undefined && (
+                    <View style={styles.spotInfoContainer}>
+                      <View style={styles.spotIconContainer}>
+                        <Text style={styles.spotIconText}>P</Text>
+                      </View>
+                      <Text style={styles.spotText}>{spot.spotsAvailable} spots available</Text>
+                    </View>
+                  )}
+                  
+                  <View style={styles.accessibleInfoContainer}>
+                    <View style={styles.accessibleIconContainer}>
+                      <Text style={styles.accessibleIconText}>A</Text>
+                    </View>
+                    <Text style={styles.spotText}>
+                      {spot.freeAccess} accessible spots available
+                    </Text>
+                  </View>
                 </View>
               ))
             )}

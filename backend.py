@@ -39,7 +39,8 @@ def add_location():
             "name": data.get("name"),
             "freeAccess": int(data.get("freeAccess", 0)), # freeAccess: total free accessible spots
             "lastUpdate": data.get("timestamp", None), # lastUpdate: last updated time user give feedback
-            "coordinates": data.get("coordinates",[0,0]) # coordinates: coordinates of the location 
+            "coordinates": data.get("coordinates",[0,0]), # coordinates: coordinates of the location 
+            "address":data.get("address","")
         }
         result = collection.insert_one(document)
 
