@@ -35,12 +35,19 @@ def get_all_locations():
 def add_location():
     try:
         data = request.json  # Get JSON data from request
+
+        total_spots = int(data.get("totalSpot", 0))
+        taken_spots = 0  # Always start with 0
+        free_spots = total_spots - taken_spots 
+
         document = {
             "name": data.get("name"),
-            "freeAccess": int(data.get("freeAccess", 0)), # freeAccess: total free accessible spots
             "lastUpdate": data.get("timestamp", None), # lastUpdate: last updated time user give feedback
             "coordinates": data.get("coordinates",[0,0]), # coordinates: coordinates of the location 
-            "address":data.get("address","")
+            "address":data.get("address",""),
+            "totalSpot": total_spots, # totalSpots: total accessible parking space available 
+            "takenSpot": taken_spots, # takenSpots: always start with 0
+            "freeAccess": free_spots, # freeAccess: total free accessible spots
         }
         result = collection.insert_one(document)
 
@@ -49,6 +56,7 @@ def add_location():
         return jsonify({"message": "Location added.", "data": document}), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
 
 # Search for location 
 @app.route("/api/public/getALocation", methods=["GET"])
@@ -141,6 +149,49 @@ def update_location():
             return jsonify({"error": "No location found."}), 404
 
         return jsonify({"message": "Last Updated Time updated."}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
+    
+
+# Update total free available accessible parking. NOTE: need to have totalSpots json param. 
+@app.route("/api/public/update_spots", methods=["PATCH"])
+def update_totalParkingNum():
+    try:
+        # Retrieve 'name' from query parameters
+        data = request.get_json()
+        name = data.get('name')
+        takenSpot = data.get('takenSpot')
+
+    
+        if takenSpot is None or not isinstance(takenSpot, int):
+            return jsonify({"error": "'totalSpot' is required and must be an integer."}), 400
+
+
+        query_filter = {"name": name}
+        current_document = collection.find_one(query_filter)
+        if not current_document:
+            return jsonify({"error": "No user business found."}), 404
+        # Define the update operation
+        current_total_spots = current_document.get("totalSpot", 0)
+        difference = current_total_spots - takenSpot
+    
+
+        update_operation = {
+            "$set": {
+                "takenSpot": takenSpot,
+                "freeAccess": difference,
+            }
+        }
+
+        # Update the document
+        result = collection.update_one(query_filter, update_operation)
+
+        if result.matched_count == 0:
+            return jsonify({"error": "No user business found."}), 404
+
+        return jsonify({"message": "Total Parking Spots and Free Spots Updated."}), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
