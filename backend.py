@@ -144,6 +144,45 @@ def update_location():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+# Update free access
+@app.route("/api/public/updateAvailAccess", methods=["PATCH"])
+def update_location():
+    try:
+        # Retrieve 'name' from query parameters
+        name = request.args.get('name')
+        if not name:
+            return jsonify({"error": "Name is required."}), 400
+
+        # Retrieve update data from request body
+        data = request.json
+        if not data:
+            return jsonify({"error": "No data updated"}), 400
+
+        new_access = data.get("freeAccess")
+        if new_access is None or not isinstance(new_access, int):
+            return jsonify({"error": "'freeAccess' is required and must be an integer."}), 400
+
+
+        query_filter = {"name": name}
+        current_document = collection.find_one(query_filter)
+        if not current_document:
+            return jsonify({"error": "No location found."}), 404
+    
+
+        update_operation = { "freeAccess": new_access }
+        
+
+        # Update the document
+        result = collection.update_one(query_filter, update_operation)
+
+        if result.matched_count == 0:
+            return jsonify({"error": "No location found."}), 404
+
+        return jsonify({"message": "Total Accessible Parking updated."}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)

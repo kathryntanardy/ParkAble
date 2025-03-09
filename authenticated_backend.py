@@ -4,68 +4,55 @@ from pymongo import MongoClient
 from datetime import datetime, timedelta, timezone
 
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": "*"}}) 
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 connection_string = "mongodb+srv://ktanardy:thisisapassword@Cluster0.arfhm.mongodb.net/?ssl=true&tlsAllowInvalidCertificates=true"
 client = MongoClient(connection_string)
 db = client['database']
 collection = db['users']
 
-# Debug: Get everything
 @app.route("/api/users/getAll", methods=["GET"])
 def get_all_locations():
     try:
-        # Fetch all documents from the collection
         users = collection.find()
-
-        # Convert documents to a list of dictionaries
         output = []
         for user in users:
-            user['_id'] = str(user['_id'])  # Convert ObjectId to string
+            user['_id'] = str(user['_id'])
             output.append(user)
-
         return jsonify(output), 200
-
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    
-# Insert Data
+
 @app.route("/api/users/add", methods=["POST"])
 def add_location():
     try:
-        data = request.json  # Get JSON data from request
-
+        data = request.json
         total_spots = int(data.get("totalSpots", 0))
-        taken_spots = 0  # Always start with 0
-        free_spots = total_spots - taken_spots 
+        taken_spots = 0
+        free_spots = total_spots - taken_spots
 
         document = {
             "username": data.get("username"),
             "password" : data.get("password"),
-            "totalSpots": total_spots, # totalSpots: total accessible parking space available 
-            "takenSpots": taken_spots, # takenSpots: always start with 0
-            "freeAccess": free_spots, # freeAccess: total free accessible spots
-            "name": data.get("name") # name: name of restaurant
+            "totalSpots": total_spots,
+            "takenSpots": taken_spots,
+            "freeAccess": free_spots,
+            "name": data.get("name")
         }
 
         result = collection.insert_one(document)
-
         document["_id"] = str(result.inserted_id)
-
         return jsonify({"message": "Location added.", "data": document}), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Update total free available accessible parking. NOTE: need to have totalSpots json param. 
 @app.route("/api/users/updateTotalParkingNum", methods=["PATCH"])
 def update_location():
     try:
-        # Retrieve 'name' from query parameters
         username = request.args.get('username')
         if not username:
             return jsonify({"error": "Username is required."}), 400
 
-        # Retrieve update data from request body
         data = request.json
         if not data:
             return jsonify({"error": "No data updated"}), 400
@@ -74,12 +61,11 @@ def update_location():
         if new_total_spots is None or not isinstance(new_total_spots, int):
             return jsonify({"error": "'totalSpots' is required and must be an integer."}), 400
 
-
         query_filter = {"username": username}
         current_document = collection.find_one(query_filter)
         if not current_document:
             return jsonify({"error": "No user business found."}), 404
-        # Define the update operation
+
         current_total_spots = current_document.get("totalSpots", 0)
         current_free_spots = current_document.get("freeSpots", 0)
         spot_difference = new_total_spots - current_total_spots
@@ -91,63 +77,39 @@ def update_location():
             }
         }
 
-        # Update the document
         result = collection.update_one(query_filter, update_operation)
-
         if result.matched_count == 0:
             return jsonify({"error": "No user business found."}), 404
 
         return jsonify({"message": "Total Parking Spots and Free Spots Updated."}), 200
-
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/users/updateTakenSpots", methods=["PATCH"])
-def update_taken_spots():
+@app.route('/update_spots', methods=['PATCH'])
+def update_spots():
     try:
-        # Retrieve 'username' from query parameters
-        username = request.args.get('username')
-        if not username:
-            return jsonify({"error": "Username is required."}), 400
+        data = request.get_json()
+        username = data.get('username')
+        takenSpots = data.get('takenSpots')
 
-        # Retrieve update data from request body
-        data = request.json
-        if not data:
-            return jsonify({"error": "No data provided."}), 400
-
-        new_taken_spots = data.get("takenSpots")
-        if new_taken_spots is None or not isinstance(new_taken_spots, int):
-            return jsonify({"error": "'takenSpots' is required and must be an integer."}), 400
-
-        # Fetch the current document
+        if not username or not isinstance(takenSpots, int):
+            return jsonify({"error": "Invalid data"}), 400
+        
         query_filter = {"username": username}
-        current_document = collection.find_one(query_filter)
-        if not current_document:
+        user = collection.find_one(query_filter)
+        
+        if not user:
             return jsonify({"error": "No user business found."}), 404
-
-        # Calculate the new freeSpots
-        total_spots = current_document.get("totalSpots", 0)
-        if new_taken_spots > total_spots:
-            return jsonify({"error": "'takenSpots' cannot exceed 'totalSpots'."}), 400
-        new_free_spots = total_spots - new_taken_spots
-
-        # Update the document
-        update_operation = {
-            "$set": {
-                "takenSpots": new_taken_spots,
-                "freeSpots": new_free_spots
-            }
-        }
-        result = collection.update_one(query_filter, update_operation)
+        
+        update_data = {"$set": {"takenSpots": takenSpots}}
+        result = collection.update_one(query_filter, update_data)
 
         if result.matched_count == 0:
-            return jsonify({"error": "No user business found."}), 404
-
-        return jsonify({"message": "Taken Spots and Free Spots Updated."}), 200
-
+            return jsonify({"error": "No documents matched the query."}), 404
+        
+        return jsonify({"message": "Database updated successfully!"}), 200
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
-
