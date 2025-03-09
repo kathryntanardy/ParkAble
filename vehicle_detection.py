@@ -4,9 +4,16 @@ import time
 import requests
 from collections import Counter
 
+# Video Source
 video_source = 'assets/videos/video.mp4'
 cap = cv.VideoCapture(video_source)
 
+# Check if video is loaded
+if not cap.isOpened():
+    print("Error: Unable to open video source.")
+    exit()
+
+# Load YOLO Model
 classes = open('coco.names').read().strip().split('\n')
 np.random.seed(42)
 colors = np.random.randint(0, 255, size=(len(classes), 3), dtype='uint8')
@@ -25,18 +32,19 @@ vehicle_counts = []
 start_time = time.time()
 mode_count = "N/A"
 
-update_spots_url = "http://127.0.0.1:5000/update_spots"
+update_spots_url = "http://127.0.0.1:5000/api/public/update_spots"
 
-while True:
+# Start Video Processing
+while cap.isOpened():
     ret, img = cap.read()
     if not ret:
         break
 
+    h, w = img.shape[:2]
     blob = cv.dnn.blobFromImage(img, 1/255.0, (416, 416), swapRB=True, crop=False)
     net.setInput(blob)
     outputs = net.forward(output_layers)
 
-    h, w = img.shape[:2]
     boxes, confidences, classIDs = [], [], []
 
     for output in outputs:
@@ -47,8 +55,8 @@ while True:
             if confidence > 0.5 and classes[classID] in vehicle_classes:
                 box = detection[:4] * np.array([w, h, w, h])
                 (centerX, centerY, width, height) = box.astype("int")
-                x = int(centerX - (width / 2))
-                y = int(centerY - (height / 2))
+                x = max(0, int(centerX - width / 2))
+                y = max(0, int(centerY - height / 2))
                 boxes.append([x, y, int(width), int(height)])
                 confidences.append(float(confidence))
                 classIDs.append(classID)
@@ -73,7 +81,6 @@ while True:
                 unmoving_vehicles += 1
 
     vehicle_tracks = current_tracks.copy()
-
     vehicle_counts.append(unmoving_vehicles)
 
     elapsed_time = time.time() - start_time
@@ -83,8 +90,8 @@ while True:
             print(f"Mode of unmoving vehicles in the last 10 seconds: {mode_count}")
 
             data = {
-                "username": "testing",
-                "takenSpots": mode_count
+                "name": "Kumon",
+                "takenSpot": mode_count
             }
             try:
                 response = requests.patch(update_spots_url, json=data)
@@ -95,7 +102,6 @@ while True:
             except Exception as e:
                 print(f"Error updating database: {e}")
 
-        
         vehicle_counts.clear()
         start_time = time.time()
 

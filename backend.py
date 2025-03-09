@@ -36,7 +36,7 @@ def add_location():
     try:
         data = request.json  # Get JSON data from request
 
-        total_spots = int(data.get("totalSpots", 0))
+        total_spots = int(data.get("totalSpot", 0))
         taken_spots = 0  # Always start with 0
         free_spots = total_spots - taken_spots 
 
@@ -45,8 +45,8 @@ def add_location():
             "lastUpdate": data.get("timestamp", None), # lastUpdate: last updated time user give feedback
             "coordinates": data.get("coordinates",[0,0]), # coordinates: coordinates of the location 
             "address":data.get("address",""),
-            "totalSpots": total_spots, # totalSpots: total accessible parking space available 
-            "takenSpots": taken_spots, # takenSpots: always start with 0
+            "totalSpot": total_spots, # totalSpots: total accessible parking space available 
+            "takenSpot": taken_spots, # takenSpots: always start with 0
             "freeAccess": free_spots, # freeAccess: total free accessible spots
         }
         result = collection.insert_one(document)
@@ -156,22 +156,17 @@ def update_location():
     
 
 # Update total free available accessible parking. NOTE: need to have totalSpots json param. 
-@app.route("/update_spots", methods=["PATCH"])
+@app.route("/api/public/update_spots", methods=["PATCH"])
 def update_totalParkingNum():
     try:
         # Retrieve 'name' from query parameters
-        name = request.args.get('name')
-        if not name:
-            return jsonify({"error": "Name is required."}), 400
+        data = request.get_json()
+        name = data.get('name')
+        takenSpot = data.get('takenSpot')
 
-        # Retrieve update data from request body
-        data = request.json
-        if not data:
-            return jsonify({"error": "No data updated"}), 400
-
-        new_total_spots = data.get("totalSpots")
-        if new_total_spots is None or not isinstance(new_total_spots, int):
-            return jsonify({"error": "'totalSpots' is required and must be an integer."}), 400
+    
+        if takenSpot is None or not isinstance(takenSpot, int):
+            return jsonify({"error": "'totalSpot' is required and must be an integer."}), 400
 
 
         query_filter = {"name": name}
@@ -179,14 +174,14 @@ def update_totalParkingNum():
         if not current_document:
             return jsonify({"error": "No user business found."}), 404
         # Define the update operation
-        current_total_spots = current_document.get("totalSpots", 0)
-        current_free_spots = current_document.get("freeAccess", 0)
-        spot_difference = new_total_spots - current_total_spots
+        current_total_spots = current_document.get("totalSpot", 0)
+        difference = current_total_spots - takenSpot
+    
 
         update_operation = {
             "$set": {
-                "totalSpots": new_total_spots,
-                "freeAccess": current_free_spots + spot_difference,
+                "takenSpot": takenSpot,
+                "freeAccess": difference,
             }
         }
 
