@@ -33,6 +33,7 @@ export default function HomeScreen() {
   const [drawerVisible, setDrawerVisible] = useState(true);
   const [activeParkingSpots, setActiveParkingSpots] = useState<ParkingSpot[]>([]);
   const [menuVisible, setMenuVisible] = useState(false);
+  const [loginModalVisible, setLoginModalVisible] = useState(false);
   
   // Set initial position to show the drawer (at full height)
   const panelHeight = height * 0.7;
@@ -137,8 +138,10 @@ export default function HomeScreen() {
 
   const handleMenuAction = (action: string) => {
     console.log(`Selected: ${action}`);
+    if (action === 'login') {
+      setLoginModalVisible(true);
+    }
     setMenuVisible(false);
-    // Handle menu actions (login or settings)
   };
 
   return (
@@ -204,13 +207,13 @@ export default function HomeScreen() {
           
           <View style={styles.menuDivider} />
           
-          <TouchableOpacity 
+          {/* <TouchableOpacity 
             style={styles.menuItem} 
             onPress={() => handleMenuAction('settings')}
           >
             <Ionicons name="settings" size={20} color="#333" style={styles.menuIcon} />
             <Text style={styles.menuText}>Settings</Text>
-          </TouchableOpacity>
+          </TouchableOpacity> */}
         </View>
       )}
 
@@ -268,6 +271,53 @@ export default function HomeScreen() {
           ))}
         </ScrollView>
       </Animated.View>
+      {/* Login Modal */}
+{/* Login Modal */}
+<Modal
+  visible={loginModalVisible}
+  transparent={true}
+  animationType="fade"
+  onRequestClose={() => setLoginModalVisible(false)}
+>
+  <TouchableOpacity 
+    style={styles.modalOverlay} 
+    activeOpacity={1} 
+    onPress={() => setLoginModalVisible(false)}
+  >
+    <TouchableOpacity 
+      style={styles.modalContent}
+      activeOpacity={1}
+      onPress={(e) => e.stopPropagation()} // Prevents taps on the content from closing the modal
+    >
+      <Text style={styles.modalTitle}>Email</Text>
+      <TextInput
+        style={styles.modalInput}
+        placeholder="Email"
+        placeholderTextColor="#999"
+      />
+      
+      <Text style={styles.modalTitle}>Password</Text>
+      <TextInput
+        style={styles.modalInput}
+        placeholder="Password"
+        placeholderTextColor="#999"
+        secureTextEntry
+      />
+      
+      <TouchableOpacity style={styles.signInButton} onPress={() => setLoginModalVisible(false)}>
+        <Text style={styles.signInButtonText}>Sign In</Text>
+      </TouchableOpacity>
+      
+      {/* <TouchableOpacity style={styles.forgotPasswordContainer} onPress={() => console.log("Forgot password")}>
+        <Text style={styles.forgotPasswordText}>Forgot password?</Text>
+      </TouchableOpacity> */}
+      
+      <TouchableOpacity style={styles.signUpButton} onPress={() => console.log("Sign up business")}>
+        <Text style={styles.signUpButtonText}>Sign Up Your Business</Text>
+      </TouchableOpacity>
+    </TouchableOpacity>
+  </TouchableOpacity>
+</Modal>
     </View>
   );
 }
@@ -481,5 +531,60 @@ const styles = StyleSheet.create({
   spotText: {
     fontSize: 14,
     color: '#333333',
-  }
+  },
+  // Add these to your existing styles
+modalOverlay: {
+  flex: 1,
+  backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+modalContent: {
+  backgroundColor: 'white',
+  borderRadius: 10,
+  padding: 20,
+  width: '80%',
+  maxWidth: 350,
+},
+modalTitle: {
+  fontSize: 16,
+  fontWeight: 'bold',
+  marginBottom: 8,
+  color: '#333',
+},
+modalInput: {
+  borderWidth: 1,
+  borderColor: '#DDDDDD',
+  borderRadius: 8,
+  padding: 12,
+  marginBottom: 16,
+  width: '100%',
+},
+signInButton: {
+  backgroundColor: '#333',
+  borderRadius: 8,
+  padding: 12,
+  alignItems: 'center',
+  marginBottom: 16,
+},
+signInButtonText: {
+  color: 'white',
+  fontWeight: 'bold',
+  fontSize: 16,
+},
+forgotPasswordContainer: {
+  alignItems: 'center',
+  marginBottom: 12,
+},
+forgotPasswordText: {
+  color: '#333',
+  textDecorationLine: 'underline',
+},
+signUpButton: {
+  alignItems: 'center',
+},
+signUpButtonText: {
+  color: '#333',
+  fontSize: 16,
+},
 });
