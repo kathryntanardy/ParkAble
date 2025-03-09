@@ -3,7 +3,7 @@ import { View, StyleSheet } from "react-native";
 import MapView, { Marker } from "react-native-maps";
 import axios from "axios";
 
-export default function HomeScreen() {
+const MapScreen = () => {
   const [parkingSpots, setParkingSpots] = useState([]);
 
   useEffect(() => {
@@ -33,10 +33,11 @@ export default function HomeScreen() {
       </MapView>
     </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
   map: { width: "100%", height: "100%" },
 });
 
+export default MapScreen;
