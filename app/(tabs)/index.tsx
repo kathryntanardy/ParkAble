@@ -10,7 +10,9 @@ import {
   Dimensions,
   Platform,
   PanResponder,
-  Modal
+  Modal,
+  ActivityIndicator,
+  Alert
 } from "react-native";
 import MapView, { LatLng, Marker } from "react-native-maps";
 import axios from "axios";
@@ -18,79 +20,50 @@ import { Ionicons } from "@expo/vector-icons";
 
 const { height, width } = Dimensions.get("window");
 
+// Update interface to match your backend data structure
 interface ParkingSpot {
-  id: number;
+  id?: number;
   name: string;
-  address: string;
-  spotsAvailable: number;
-  accessibleSpots: number;
-  coordinate?: LatLng;
+  address?: string;
+  spotsAvailable?: number;
+  accessibleSpots?: number;
+  freeAccess: number;
+  lastUpdate?: string | null;
+  coordinates: number[]; // [longitude, latitude]
 }
 
+// Base URL for your API - replace with your actual backend URL
+// If running locally on a physical device, use your computer's IP address
+// If using an emulator, you might use http://10.0.2.2:5000 for Android or http://localhost:5000 for iOS
+const API_BASE_URL = "http://127.0.0.1:5000";
+
 export default function HomeScreen() {
-  const [parkingSpots, setParkingSpots] = useState<LatLng[]>([]);
+  const [parkingSpots, setParkingSpots] = useState<ParkingSpot[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [drawerVisible, setDrawerVisible] = useState(true);
-  const [activeParkingSpots, setActiveParkingSpots] = useState<ParkingSpot[]>([]);
   const [menuVisible, setMenuVisible] = useState(false);
+  const [loginModalVisible, setLoginModalVisible] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
   // Set initial position to show the drawer (at full height)
   const panelHeight = height * 0.7;
   const collapsedHeight = height * 0.13;
   
   // Animation for the slide-up panel, starting at the expanded position (0)
-  const slideUpAnim = useRef(new Animated.Value(height *0.58)).current;
+  const slideUpAnim = useRef(new Animated.Value(height * 0.58)).current;
   
-  // Fake parking data with coordinates for the map markers
-  const fakeParkingData: ParkingSpot[] = [
-    { 
-      id: 1, 
-      name: "University Blvd Lot", 
-      address: "6131 University Blvd, Vancouver", 
-      spotsAvailable: 15, 
-      accessibleSpots: 15,
-      coordinate: { latitude: 49.2665, longitude: -123.2465 }
-    },
-    { 
-      id: 2, 
-      name: "Agronomy Road Parking", 
-      address: "6152 Agronomy Rd, Vancouver", 
-      spotsAvailable: 15, 
-      accessibleSpots: 15,
-      coordinate: { latitude: 49.2610, longitude: -123.2495 }
-    },
-    { 
-      id: 3, 
-      name: "West Parkade", 
-      address: "2140 Lower Mall, Vancouver", 
-      spotsAvailable: 8, 
-      accessibleSpots: 4,
-      coordinate: { latitude: 49.2675, longitude: -123.2560 }
-    },
-    { 
-      id: 4, 
-      name: "North Parkade", 
-      address: "6115 Student Union Blvd, Vancouver", 
-      spotsAvailable: 12, 
-      accessibleSpots: 6,
-      coordinate: { latitude: 49.2685, longitude: -123.2495 }
-    }
-  ];
-
   // Pan responder for the draggable drawer
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onPanResponderMove: (_, gestureState) => {
-        // Only allow dragging down (positive dy)
         if (gestureState.dy > 0) {
-          // Map the gesture directly to the animation value
           slideUpAnim.setValue(gestureState.dy);
         }
       },
       onPanResponderRelease: (_, gestureState) => {
         if (gestureState.dy > 100) {
-          // If dragged down more than 100px, collapse to minimized state
           Animated.spring(slideUpAnim, {
             toValue: panelHeight - collapsedHeight,
             useNativeDriver: true,
@@ -98,7 +71,6 @@ export default function HomeScreen() {
             setDrawerVisible(false);
           });
         } else {
-          // Spring back to open position
           Animated.spring(slideUpAnim, {
             toValue: 0,
             useNativeDriver: true,
@@ -109,16 +81,145 @@ export default function HomeScreen() {
       },
     })
   ).current;
+
+  // Fetch parking spots from the API
+  const fetchParkingSpots = async () => {
+    setIsLoading(true);
+    setError(null);
+  
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/public/getAll`);
+  
+      console.log("Raw API Response:", response.data); // Debug log
+  
+      // Ensure coordinates are correctly formatted as [latitude, longitude]
+      const formattedData = response.data.map((spot: any) => {
+        const [longitude, latitude] = spot.coordinates; // Ensure order is correct
+  
+        console.log(`Spot: ${spot.name}, Latitude: ${latitude}, Longitude: ${longitude}`);
+  
+        return {
+          name: spot.name,
+          freeAccess: spot.freeAccess,
+          lastUpdate: spot.lastUpdate,
+          coordinates: [latitude, longitude], // Ensure correct order
+          address: "Retrieved from MongoDB",
+          spotsAvailable: 0,
+          accessibleSpots: spot.freeAccess,
+        };
+      });
+      
+      setParkingSpots(formattedData);
+    } catch (err) {
+      console.error("Error fetching parking spots:", err);
+      setError("Failed to load parking spots. Please try again.");
+      
+      // For development, you might want to fallback to dummy data if API fails
+      setParkingSpots(fakeParkingData);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // For search functionality
+  const searchLocations = async (query: string) => {
+    if (!query.trim()) {
+      fetchParkingSpots();
+      return;
+    }
+    
+    setIsLoading(true);
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/public/getALocation?name=${query}`);
+      
+      // Transform the backend data to match your frontend model
+      const formattedData = response.data.map((spot: any) => ({
+        
+        name: spot.name,
+        freeAccess: spot.freeAccess,
+        lastUpdate: spot.lastUpdate,
+        coordinates: spot.coordinates,
+        address: "Retrieved from search", 
+        spotsAvailable: 0,
+        accessibleSpots: spot.freeAccess,
+      }));
+      
+      setParkingSpots(formattedData);
+    } catch (err) {
+      console.error("Error searching locations:", err);
+      setError("Failed to search locations. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Fake parking data as fallback
+  const fakeParkingData: ParkingSpot[] = [
+    { 
+      id: 1, 
+      name: "University Blvd Lot", 
+      address: "6131 University Blvd, Vancouver", 
+      spotsAvailable: 15, 
+      freeAccess: 15,
+      accessibleSpots: 15,
+      coordinates: [-123.2465, 49.2665], // Note: Backend uses [longitude, latitude]
+      lastUpdate: new Date().toISOString()
+    },
+    { 
+      id: 2, 
+      name: "Agronomy Road Parking", 
+      address: "6152 Agronomy Rd, Vancouver", 
+      spotsAvailable: 15, 
+      freeAccess: 15,
+      accessibleSpots: 15,
+      coordinates: [-123.2495, 49.2610],
+      lastUpdate: new Date().toISOString()
+    },
+    { 
+      id: 3, 
+      name: "West Parkade", 
+      address: "2140 Lower Mall, Vancouver", 
+      spotsAvailable: 8, 
+      freeAccess: 4,
+      accessibleSpots: 4,
+      coordinates: [-123.2560, 49.2675],
+      lastUpdate: new Date().toISOString()
+    },
+    { 
+      id: 4, 
+      name: "North Parkade", 
+      address: "6115 Student Union Blvd, Vancouver", 
+      spotsAvailable: 12, 
+      freeAccess: 6,
+      accessibleSpots: 6,
+      coordinates: [-123.2495, 49.2685],
+      lastUpdate: new Date().toISOString()
+    }
+  ];
   
   useEffect(() => {
-    // Set the fake data initially
-    setActiveParkingSpots(fakeParkingData);
+    // Fetch parking spots when component mounts
+    fetchParkingSpots();
     
-    // Mock API call
-    axios.get("https://your-api.com/parking-spots")
-      .then(response => setParkingSpots(response.data))
-      .catch(error => console.log("Error fetching data:", error));
+    // Optionally set up a refresh interval
+    const intervalId = setInterval(() => {
+      fetchParkingSpots();
+    }, 60000); // Refresh every minute
+    
+    // Clean up interval on component unmount
+    return () => clearInterval(intervalId);
   }, []);
+  
+  // Handle search input changes
+  const handleSearchChange = (text: string) => {
+    setSearchQuery(text);
+    // Debounce search to avoid too many API calls
+    const timeoutId = setTimeout(() => {
+      searchLocations(text);
+    }, 500);
+    
+    return () => clearTimeout(timeoutId);
+  };
 
   const toggleDrawer = () => {
     const toValue = drawerVisible ? panelHeight - collapsedHeight : 0;
@@ -137,8 +238,36 @@ export default function HomeScreen() {
 
   const handleMenuAction = (action: string) => {
     console.log(`Selected: ${action}`);
+    if (action === 'login') {
+      setLoginModalVisible(true);
+    }
+    if (action === 'refresh') {
+      fetchParkingSpots();
+    }
     setMenuVisible(false);
-    // Handle menu actions (login or settings)
+  };
+
+  // Helper function to format date/time
+  const formatLastUpdated = (lastUpdate: string | null) => {
+    if (!lastUpdate) return "Unknown";
+    
+    try {
+      const updateDate = new Date(lastUpdate);
+      const now = new Date();
+      const diffMinutes = Math.floor((now.getTime() - updateDate.getTime()) / (1000 * 60));
+      
+      if (diffMinutes < 1) return "Just now";
+      if (diffMinutes === 1) return "1 minute ago";
+      if (diffMinutes < 60) return `${diffMinutes} minutes ago`;
+      
+      const diffHours = Math.floor(diffMinutes / 60);
+      if (diffHours === 1) return "1 hour ago";
+      if (diffHours < 24) return `${diffHours} hours ago`;
+      
+      return updateDate.toLocaleDateString();
+    } catch (e) {
+      return "Invalid date";
+    }
   };
 
   return (
@@ -153,19 +282,22 @@ export default function HomeScreen() {
           longitudeDelta: 0.01,
         }}
       >
-        {fakeParkingData.map((spot) => (
+        {parkingSpots.map((spot, index) => (
           <Marker
-            key={spot.id}
-            coordinate={spot.coordinate as LatLng}
+            key={spot.id || index}
+            coordinate={{
+              // Convert from backend format [longitude, latitude] to MapView format
+              latitude: spot.coordinates[1], 
+              longitude: spot.coordinates[0]
+            }}
             title={spot.name}
-            description={`${spot.spotsAvailable} spots available`}
+            description={`${spot.freeAccess} accessible spots available`}
           />
         ))}
       </MapView>
 
       {/* Top Bar with Search and Menu */}
       <View style={styles.topBar}>
-        {/* Search Bar - now with reduced width */}
         <View style={styles.searchContainer}>
           <Ionicons name="search" size={20} color="#999" style={styles.searchIcon} />
           <TextInput
@@ -173,16 +305,18 @@ export default function HomeScreen() {
             placeholder="Search Location"
             placeholderTextColor="#999"
             value={searchQuery}
-            onChangeText={setSearchQuery}
+            onChangeText={handleSearchChange}
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery("")}>
+            <TouchableOpacity onPress={() => {
+              setSearchQuery("");
+              fetchParkingSpots();
+            }}>
               <Ionicons name="close" size={20} color="#999" />
             </TouchableOpacity>
           )}
         </View>
 
-        {/* Menu Button */}
         <TouchableOpacity 
           style={styles.menuButton}
           onPress={toggleMenu}
@@ -206,10 +340,10 @@ export default function HomeScreen() {
           
           <TouchableOpacity 
             style={styles.menuItem} 
-            onPress={() => handleMenuAction('settings')}
+            onPress={() => handleMenuAction('refresh')}
           >
-            <Ionicons name="settings" size={20} color="#333" style={styles.menuIcon} />
-            <Text style={styles.menuText}>Settings</Text>
+            <Ionicons name="refresh" size={20} color="#333" style={styles.menuIcon} />
+            <Text style={styles.menuText}>Refresh Data</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -225,7 +359,7 @@ export default function HomeScreen() {
           styles.slideUpPanel,
           {
             transform: [{ translateY: slideUpAnim }],
-            height: panelHeight, // Set explicit height for the panel
+            height: panelHeight,
           },
         ]}
       >
@@ -235,39 +369,116 @@ export default function HomeScreen() {
           style={styles.dragHandle}
         >
           <View style={styles.dragIndicator} />
-          <TouchableOpacity onPress={toggleDrawer} style={styles.toggleButton}>
-            {/* <Ionicons 
-              name={drawerVisible ? "chevron-down" : "chevron-up"} 
-              size={24} 
-              color="#999" 
-            /> */}
-          </TouchableOpacity>
+          <TouchableOpacity onPress={toggleDrawer} style={styles.toggleButton} />
         </View>
 
         {/* Panel Content */}
-        <ScrollView style={styles.panelContent}>
-          {activeParkingSpots.map((spot) => (
-            <View key={spot.id} style={styles.parkingItem}>
-              <Text style={styles.parkingTitle}>{spot.name}</Text>
-              <Text style={styles.parkingAddress}>{spot.address}</Text>
-              
-              <View style={styles.spotInfoContainer}>
-                <View style={styles.spotIconContainer}>
-                  <Text style={styles.spotIconText}>P</Text>
-                </View>
-                <Text style={styles.spotText}>{spot.spotsAvailable} spots available</Text>
+        {isLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#5D3FD3" />
+            <Text style={styles.loadingText}>Loading parking spots...</Text>
+          </View>
+        ) : error ? (
+          <View style={styles.errorContainer}>
+            <Ionicons name="alert-circle" size={40} color="#E75480" />
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity 
+              style={styles.retryButton}
+              onPress={fetchParkingSpots}
+            >
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <ScrollView style={styles.panelContent}>
+            {parkingSpots.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>No parking spots found</Text>
               </View>
-              
-              <View style={styles.accessibleInfoContainer}>
-                <View style={styles.accessibleIconContainer}>
-                  <Text style={styles.accessibleIconText}>A</Text>
+            ) : (
+              parkingSpots.map((spot, index) => (
+                <View key={spot.id || index} style={styles.parkingItem}>
+                  <Text style={styles.parkingTitle}>{spot.name}</Text>
+                  <Text style={styles.parkingAddress}>{spot.address || "Address not available"}</Text>
+                  
+                  {spot.lastUpdate && (
+                    <Text style={styles.lastUpdatedText}>
+                      Last updated: {formatLastUpdated(spot.lastUpdate)}
+                    </Text>
+                  )}
+                  
+                  {spot.spotsAvailable !== undefined && (
+                    <View style={styles.spotInfoContainer}>
+                      <View style={styles.spotIconContainer}>
+                        <Text style={styles.spotIconText}>P</Text>
+                      </View>
+                      <Text style={styles.spotText}>{spot.spotsAvailable} spots available</Text>
+                    </View>
+                  )}
+                  
+                  <View style={styles.accessibleInfoContainer}>
+                    <View style={styles.accessibleIconContainer}>
+                      <Text style={styles.accessibleIconText}>A</Text>
+                    </View>
+                    <Text style={styles.spotText}>
+                      {spot.freeAccess} accessible spots available
+                    </Text>
+                  </View>
                 </View>
-                <Text style={styles.spotText}>{spot.accessibleSpots} accessible spots available</Text>
-              </View>
-            </View>
-          ))}
-        </ScrollView>
+              ))
+            )}
+          </ScrollView>
+        )}
       </Animated.View>
+
+      {/* Login Modal */}
+      <Modal
+        visible={loginModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setLoginModalVisible(false)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay} 
+          activeOpacity={1} 
+          onPress={() => setLoginModalVisible(false)}
+        >
+          <TouchableOpacity 
+            style={styles.modalContent}
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={styles.modalTitle}>Email</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Email"
+              placeholderTextColor="#999"
+            />
+            
+            <Text style={styles.modalTitle}>Password</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Password"
+              placeholderTextColor="#999"
+              secureTextEntry
+            />
+            
+            <TouchableOpacity 
+              style={styles.signInButton} 
+              onPress={() => setLoginModalVisible(false)}
+            >
+              <Text style={styles.signInButtonText}>Sign In</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.signUpButton} 
+              onPress={() => console.log("Sign up business")}
+            >
+              <Text style={styles.signUpButtonText}>Sign Up Your Business</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -433,7 +644,13 @@ const styles = StyleSheet.create({
   parkingAddress: {
     fontSize: 14,
     color: '#666666',
+    marginBottom: 6,
+  },
+  lastUpdatedText: {
+    fontSize: 12,
+    color: '#888888',
     marginBottom: 12,
+    fontStyle: 'italic',
   },
   spotInfoContainer: {
     flexDirection: 'row',
@@ -481,5 +698,102 @@ const styles = StyleSheet.create({
   spotText: {
     fontSize: 14,
     color: '#333333',
-  }
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 10,
+    padding: 20,
+    width: '80%',
+    maxWidth: 350,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    color: '#333',
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#DDDDDD',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    width: '100%',
+  },
+  signInButton: {
+    backgroundColor: '#333',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  signInButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  forgotPasswordContainer: {
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  forgotPasswordText: {
+    color: '#333',
+    textDecorationLine: 'underline',
+  },
+  signUpButton: {
+    alignItems: 'center',
+  },
+  signUpButtonText: {
+    color: '#333',
+    fontSize: 16,
+  },
+  // Loading and error states
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#666',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#E75480',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  retryButton: {
+    backgroundColor: '#333',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  emptyContainer: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#666',
+  },
 });
