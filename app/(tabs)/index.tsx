@@ -42,9 +42,6 @@ export default function HomeScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [drawerVisible, setDrawerVisible] = useState(true);
   const [menuVisible, setMenuVisible] = useState(false);
-  const [loginModalVisible, setLoginModalVisible] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   
   // Set initial position to show the drawer (at full height)
   const panelHeight = height * 0.7;
@@ -238,36 +235,8 @@ export default function HomeScreen() {
 
   const handleMenuAction = (action: string) => {
     console.log(`Selected: ${action}`);
-    if (action === 'login') {
-      setLoginModalVisible(true);
-    }
-    if (action === 'refresh') {
-      fetchParkingSpots();
-    }
     setMenuVisible(false);
-  };
-
-  // Helper function to format date/time
-  const formatLastUpdated = (lastUpdate: string | null) => {
-    if (!lastUpdate) return "Unknown";
-    
-    try {
-      const updateDate = new Date(lastUpdate);
-      const now = new Date();
-      const diffMinutes = Math.floor((now.getTime() - updateDate.getTime()) / (1000 * 60));
-      
-      if (diffMinutes < 1) return "Just now";
-      if (diffMinutes === 1) return "1 minute ago";
-      if (diffMinutes < 60) return `${diffMinutes} minutes ago`;
-      
-      const diffHours = Math.floor(diffMinutes / 60);
-      if (diffHours === 1) return "1 hour ago";
-      if (diffHours < 24) return `${diffHours} hours ago`;
-      
-      return updateDate.toLocaleDateString();
-    } catch (e) {
-      return "Invalid date";
-    }
+    // Handle menu actions (login or settings)
   };
 
   return (
@@ -338,12 +307,12 @@ export default function HomeScreen() {
           
           <View style={styles.menuDivider} />
           
-          <TouchableOpacity 
+          {/* <TouchableOpacity 
             style={styles.menuItem} 
             onPress={() => handleMenuAction('refresh')}
           >
-            <Ionicons name="refresh" size={20} color="#333" style={styles.menuIcon} />
-            <Text style={styles.menuText}>Refresh Data</Text>
+            <Ionicons name="settings" size={20} color="#333" style={styles.menuIcon} />
+            <Text style={styles.menuText}>Settings</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -430,55 +399,6 @@ export default function HomeScreen() {
           </ScrollView>
         )}
       </Animated.View>
-
-      {/* Login Modal */}
-      <Modal
-        visible={loginModalVisible}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setLoginModalVisible(false)}
-      >
-        <TouchableOpacity 
-          style={styles.modalOverlay} 
-          activeOpacity={1} 
-          onPress={() => setLoginModalVisible(false)}
-        >
-          <TouchableOpacity 
-            style={styles.modalContent}
-            activeOpacity={1}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <Text style={styles.modalTitle}>Email</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Email"
-              placeholderTextColor="#999"
-            />
-            
-            <Text style={styles.modalTitle}>Password</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Password"
-              placeholderTextColor="#999"
-              secureTextEntry
-            />
-            
-            <TouchableOpacity 
-              style={styles.signInButton} 
-              onPress={() => setLoginModalVisible(false)}
-            >
-              <Text style={styles.signInButtonText}>Sign In</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.signUpButton} 
-              onPress={() => console.log("Sign up business")}
-            >
-              <Text style={styles.signUpButtonText}>Sign Up Your Business</Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
     </View>
   );
 }
@@ -698,102 +618,5 @@ const styles = StyleSheet.create({
   spotText: {
     fontSize: 14,
     color: '#333333',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: 'white',
-    borderRadius: 10,
-    padding: 20,
-    width: '80%',
-    maxWidth: 350,
-  },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 8,
-    color: '#333',
-  },
-  modalInput: {
-    borderWidth: 1,
-    borderColor: '#DDDDDD',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    width: '100%',
-  },
-  signInButton: {
-    backgroundColor: '#333',
-    borderRadius: 8,
-    padding: 12,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  signInButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  forgotPasswordContainer: {
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  forgotPasswordText: {
-    color: '#333',
-    textDecorationLine: 'underline',
-  },
-  signUpButton: {
-    alignItems: 'center',
-  },
-  signUpButtonText: {
-    color: '#333',
-    fontSize: 16,
-  },
-  // Loading and error states
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#666',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  errorText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#E75480',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  retryButton: {
-    backgroundColor: '#333',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
-  },
-  emptyContainer: {
-    padding: 20,
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: 16,
-    color: '#666',
-  },
+  }
 });
