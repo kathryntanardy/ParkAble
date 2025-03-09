@@ -1,4 +1,4 @@
-# ParkAble: An Accessible Parking Spot Information Provider 👋
+# ParkAble: An Accessible Parking Spot Information Provider 🚗
 Make sure the below dependencies are installed:
 - Flask
 - Python
