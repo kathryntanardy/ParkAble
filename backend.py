@@ -10,10 +10,10 @@ CORS(app, resources={r"/api/*": {"origins": "*"}})
 connection_string = "mongodb+srv://ktanardy:thisisapassword@Cluster0.arfhm.mongodb.net/?ssl=true&tlsAllowInvalidCertificates=true"
 client = MongoClient(connection_string)
 db = client['database']
-collection = db['location']
+collection = db['public']
 
 # Debug: Get everything
-@app.route("/api/locations/getAll", methods=["GET"])
+@app.route("/api/public/getAll", methods=["GET"])
 def get_all_locations():
     try:
         # Fetch all documents from the collection
@@ -31,17 +31,15 @@ def get_all_locations():
         return jsonify({"error": str(e)}), 500
 
 # Insert Data
-@app.route("/api/locations/add", methods=["POST"])
+@app.route("/api/public/add", methods=["POST"])
 def add_location():
     try:
         data = request.json  # Get JSON data from request
         document = {
             "name": data.get("name"),
-            "username": data.get("username"),
-            "password": data.get("password"),
-            "freeSpots": int(data.get("freeSpots", 0)), # freeSpots: total free parking spots
             "freeAccess": int(data.get("freeAccess", 0)), # freeAccess: total free accessible spots
-            "lastUpdate": data.get("timestamp", None) # lastUpdate: last updated time user give feedback
+            "lastUpdate": data.get("timestamp", None), # lastUpdate: last updated time user give feedback
+            "coordinates": data.get("coordinates",[0,0]) # coordinates: coordinates of the location 
         }
         result = collection.insert_one(document)
 
@@ -52,7 +50,7 @@ def add_location():
         return jsonify({"error": str(e)}), 500
 
 # Search for location 
-@app.route("/api/locations/getALocation", methods=["GET"])
+@app.route("/api/public/getALocation", methods=["GET"])
 def get_locations():
     try:
         filter_query = {}
@@ -69,7 +67,7 @@ def get_locations():
     
 
 # Get last user feedback update time on a specific location
-@app.route("/api/locations/recent", methods=["GET"])
+@app.route("/api/public/recent", methods=["GET"])
 def get_lastUpdates():
     try:
         filter_query = {}
@@ -89,7 +87,7 @@ def get_lastUpdates():
         return jsonify({"error": str(e)}), 500
     
 # Delete location based on the business' username
-@app.route("/api/locations/remove", methods=["DELETE"])
+@app.route("/api/public/remove", methods=["DELETE"])
 def delete_location():
     try:
         # Retrieve 'name' from query parameters
@@ -113,7 +111,7 @@ def delete_location():
     
 
 # Update last updated time 
-@app.route("/api/locations/update", methods=["PATCH"])
+@app.route("/api/public/update", methods=["PATCH"])
 def update_location():
     try:
         # Retrieve 'name' from query parameters
