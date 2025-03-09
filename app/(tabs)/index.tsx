@@ -9,13 +9,14 @@ import {
   ScrollView,
   Dimensions,
   Platform,
-  PanResponder
+  PanResponder,
+  Modal
 } from "react-native";
 import MapView, { LatLng, Marker } from "react-native-maps";
 import axios from "axios";
 import { Ionicons } from "@expo/vector-icons";
 
-const { height } = Dimensions.get("window");
+const { height, width } = Dimensions.get("window");
 
 interface ParkingSpot {
   id: number;
@@ -31,9 +32,14 @@ export default function HomeScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [drawerVisible, setDrawerVisible] = useState(true);
   const [activeParkingSpots, setActiveParkingSpots] = useState<ParkingSpot[]>([]);
+  const [menuVisible, setMenuVisible] = useState(false);
   
-  // Animation for the slide-up panel
-  const slideUpAnim = useRef(new Animated.Value(0)).current;
+  // Set initial position to show the drawer (at full height)
+  const panelHeight = height * 0.7;
+  const collapsedHeight = height * 0.13;
+  
+  // Animation for the slide-up panel, starting at the expanded position (0)
+  const slideUpAnim = useRef(new Animated.Value(height *0.58)).current;
   
   // Fake parking data with coordinates for the map markers
   const fakeParkingData: ParkingSpot[] = [
@@ -76,25 +82,34 @@ export default function HomeScreen() {
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onPanResponderMove: (_, gestureState) => {
+        // Only allow dragging down (positive dy)
         if (gestureState.dy > 0) {
+          // Map the gesture directly to the animation value
           slideUpAnim.setValue(gestureState.dy);
         }
       },
       onPanResponderRelease: (_, gestureState) => {
         if (gestureState.dy > 100) {
-          // User dragged down far enough to collapse the drawer
-          toggleDrawer();
+          // If dragged down more than 100px, collapse to minimized state
+          Animated.spring(slideUpAnim, {
+            toValue: panelHeight - collapsedHeight,
+            useNativeDriver: true,
+          }).start(() => {
+            setDrawerVisible(false);
+          });
         } else {
           // Spring back to open position
           Animated.spring(slideUpAnim, {
             toValue: 0,
             useNativeDriver: true,
-          }).start();
+          }).start(() => {
+            setDrawerVisible(true);
+          });
         }
       },
     })
   ).current;
-
+  
   useEffect(() => {
     // Set the fake data initially
     setActiveParkingSpots(fakeParkingData);
@@ -106,7 +121,7 @@ export default function HomeScreen() {
   }, []);
 
   const toggleDrawer = () => {
-    const toValue = drawerVisible ? height * 0.7 : 0;
+    const toValue = drawerVisible ? panelHeight - collapsedHeight : 0;
     
     Animated.spring(slideUpAnim, {
       toValue,
@@ -114,6 +129,16 @@ export default function HomeScreen() {
     }).start();
     
     setDrawerVisible(!drawerVisible);
+  };
+
+  const toggleMenu = () => {
+    setMenuVisible(!menuVisible);
+  };
+
+  const handleMenuAction = (action: string) => {
+    console.log(`Selected: ${action}`);
+    setMenuVisible(false);
+    // Handle menu actions (login or settings)
   };
 
   return (
@@ -138,22 +163,56 @@ export default function HomeScreen() {
         ))}
       </MapView>
 
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <Ionicons name="search" size={20} color="#999" style={styles.searchIcon} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="University of British Columbia"
-          placeholderTextColor="#999"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchQuery("")}>
-            <Ionicons name="close" size={20} color="#999" />
-          </TouchableOpacity>
-        )}
+      {/* Top Bar with Search and Menu */}
+      <View style={styles.topBar}>
+        {/* Search Bar - now with reduced width */}
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={20} color="#999" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search Location"
+            placeholderTextColor="#999"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery("")}>
+              <Ionicons name="close" size={20} color="#999" />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Menu Button */}
+        <TouchableOpacity 
+          style={styles.menuButton}
+          onPress={toggleMenu}
+        >
+          <Ionicons name="menu" size={24} color="#333" />
+        </TouchableOpacity>
       </View>
+
+      {/* Dropdown Menu */}
+      {menuVisible && (
+        <View style={styles.menuDropdown}>
+          <TouchableOpacity 
+            style={styles.menuItem}
+            onPress={() => handleMenuAction('login')}
+          >
+            <Ionicons name="person" size={20} color="#333" style={styles.menuIcon} />
+            <Text style={styles.menuText}>Login</Text>
+          </TouchableOpacity>
+          
+          <View style={styles.menuDivider} />
+          
+          <TouchableOpacity 
+            style={styles.menuItem} 
+            onPress={() => handleMenuAction('settings')}
+          >
+            <Ionicons name="settings" size={20} color="#333" style={styles.menuIcon} />
+            <Text style={styles.menuText}>Settings</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Current Location Button */}
       <TouchableOpacity style={styles.locationButton}>
@@ -166,6 +225,7 @@ export default function HomeScreen() {
           styles.slideUpPanel,
           {
             transform: [{ translateY: slideUpAnim }],
+            height: panelHeight, // Set explicit height for the panel
           },
         ]}
       >
@@ -175,6 +235,13 @@ export default function HomeScreen() {
           style={styles.dragHandle}
         >
           <View style={styles.dragIndicator} />
+          <TouchableOpacity onPress={toggleDrawer} style={styles.toggleButton}>
+            {/* <Ionicons 
+              name={drawerVisible ? "chevron-down" : "chevron-up"} 
+              size={24} 
+              color="#999" 
+            /> */}
+          </TouchableOpacity>
         </View>
 
         {/* Panel Content */}
@@ -213,7 +280,7 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%"
   },
-  searchContainer: {
+  topBar: {
     position: 'absolute',
     top: 40,
     left: 10,
@@ -221,9 +288,16 @@ const styles = StyleSheet.create({
     zIndex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: 'white',
     borderRadius: 8,
     padding: 10,
+    flex: 1,
+    marginRight: 10,
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
@@ -240,9 +314,58 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 20,
   },
+  menuButton: {
+    backgroundColor: 'white',
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  menuDropdown: {
+    position: 'absolute',
+    top: 90,
+    right: 10,
+    backgroundColor: 'white',
+    borderRadius: 8,
+    width: 160,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    zIndex: 2,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+  },
+  menuIcon: {
+    marginRight: 10,
+  },
+  menuText: {
+    fontSize: 16,
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: '#EEEEEE',
+    marginHorizontal: 8,
+  },
   locationButton: {
     position: 'absolute',
-    bottom: 280,
+    bottom: 100,
     right: 16,
     backgroundColor: 'white',
     width: 50,
@@ -267,7 +390,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    height: height * 0.7,
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
@@ -282,6 +404,7 @@ const styles = StyleSheet.create({
     height: 24,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
   },
   dragIndicator: {
     width: 40,
@@ -289,6 +412,10 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: '#DDDDDD',
     marginVertical: 8,
+  },
+  toggleButton: {
+    position: 'absolute',
+    right: 16,
   },
   panelContent: {
     flex: 1,
