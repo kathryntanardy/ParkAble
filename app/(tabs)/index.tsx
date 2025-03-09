@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import * as Location from 'expo-location';
 import { 
   View, 
   StyleSheet, 
@@ -20,7 +21,6 @@ import { Ionicons } from "@expo/vector-icons";
 
 const { height, width } = Dimensions.get("window");
 
-// Update interface to match your backend data structure
 interface ParkingSpot {
   id?: number;
   name: string;
@@ -30,11 +30,9 @@ interface ParkingSpot {
   freeAccess: number;
   lastUpdate?: string | null;
   coordinates: number[]; // [longitude, latitude]
+  distance?: number; 
 }
 
-// Base URL for your API - replace with your actual backend URL
-// If running locally on a physical device, use your computer's IP address
-// If using an emulator, you might use http://10.0.2.2:5000 for Android or http://localhost:5000 for iOS
 const API_BASE_URL = "http://127.0.0.1:5000";
 
 export default function HomeScreen() {
@@ -45,15 +43,45 @@ export default function HomeScreen() {
   const [loginModalVisible, setLoginModalVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
-  // Set initial position to show the drawer (at full height)
+  const [userLocation, setUserLocation] = useState<LatLng | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [locationName, setLocationName] = useState("");
+  const [locationAddress, setLocationAddress] = useState("");
+  const [totalSpots, setTotalSpots] = useState("");
+  const [accessibleSpots, setAccessibleSpots] = useState("");
+  // const [locationCoords, setLocationCoords] = useState<number[] | null>(null); // [longitude, latitude]
+  const [latitude, setLatitude] = useState("");
+  const [longitude, setLongitude] = useState("");
+
+
+  const mapRef = useRef<MapView | null>(null);
+  const scrollViewRef = useRef<ScrollView | null>(null);
+
+
   const panelHeight = height * 0.7;
   const collapsedHeight = height * 0.13;
-  
-  // Animation for the slide-up panel, starting at the expanded position (0)
   const slideUpAnim = useRef(new Animated.Value(height * 0.58)).current;
+
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371; // Radius of the Earth in km
+    const toRad = (angle: number) => (angle * Math.PI) / 180;
+    
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) *
+        Math.cos(toRad(lat2)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c; // Distance in km
+  };
   
-  // Pan responder for the draggable drawer
+  
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -82,6 +110,106 @@ export default function HomeScreen() {
     })
   ).current;
 
+  useEffect(() => {
+    (async () => {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setLocationError('Permission to access location was denied');
+        return;
+      }
+
+      let location = await Location.getCurrentPositionAsync({});
+      console.log("User Location:", location.coords); // Debug log
+      setUserLocation({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      });
+      fetchParkingSpots();
+    })(); 
+  }, []);
+
+  const addNewLocation = async () => {
+    if (!locationName || !locationAddress || !totalSpots || !accessibleSpots || !latitude || !longitude) {
+      Alert.alert("Missing Fields", "Please fill in all fields.");
+      return;
+    }
+  
+    const coordinates = [parseFloat(longitude), parseFloat(latitude)]; // Convert to numbers
+  
+    try {
+      const response = await axios.post(`${API_BASE_URL}/api/public/add`, {
+        name: locationName,
+        address: locationAddress,
+        freeAccess: parseInt(accessibleSpots, 10),
+        coordinates: coordinates,
+        lastUpdate: new Date().toISOString(),
+      });
+  
+      if (response.status === 201) {
+        Alert.alert("Success", "Location added successfully!");
+        setLoginModalVisible(false);
+        fetchParkingSpots(); // Refresh the list
+      }
+    } catch (error) {
+      Alert.alert("Error", "Failed to add location.");
+      console.error(error);
+    }
+  };
+  
+
+  const goToParkingSpot = (latitude?: number, longitude?: number, index?: number) => {
+    if (latitude === undefined || longitude === undefined || index === undefined) {
+      Alert.alert("Invalid Location", "This location does not have valid coordinates.");
+      return;
+    }
+  
+    // Center the map on the selected parking spot
+    if (mapRef.current) {
+      mapRef.current.animateCamera({
+        center: { latitude, longitude },
+        zoom: 17,
+      });
+    }
+  
+    // Calculate scroll position
+    const itemHeight = 120; // Approximate height of each list item
+    const scrollToY = Math.min(index * itemHeight); // Scroll to the item
+  
+    // if (scrollViewRef.current) {
+    //   scrollViewRef.current.scrollTo({ y: scrollToY, animated: true });
+    // }
+  
+    // Adjust sliding panel to 45% height
+    const newPanelHeight = height * 0.45; // Set the panel height to 45% of the screen
+    Animated.spring(slideUpAnim, {
+      toValue: height - newPanelHeight, // Slide up to the new height
+      useNativeDriver: true,
+    }).start(() => setDrawerVisible(true));
+  
+    // Ensure the name is always at the top
+    if (scrollViewRef.current) {
+      scrollViewRef.current.scrollTo({ y: 0, animated: true });
+    }
+  };
+  
+  
+  
+
+  const goToUserLocation = () => {
+    if (!userLocation) {
+      Alert.alert('Location Not Found', 'Please enable location services and try again.');
+      return;
+    }
+
+    if (mapRef.current) {
+      mapRef.current.animateCamera({
+        center: userLocation,
+        zoom: 15,
+      });
+    }
+  };
+  
+  
   // Fetch parking spots from the API
   const fetchParkingSpots = async () => {
     setIsLoading(true);
@@ -89,61 +217,62 @@ export default function HomeScreen() {
   
     try {
       const response = await axios.get(`${API_BASE_URL}/api/public/getAll`);
-  
       console.log("Raw API Response:", response.data); // Debug log
   
-      // Ensure coordinates are correctly formatted as [latitude, longitude]
-      const formattedData = response.data.map((spot: any) => {
-        const [longitude, latitude] = spot.coordinates; // Ensure order is correct
+      let formattedData = response.data.map((spot: any) => {
+        const [longitude, latitude] = spot.coordinates || [0, 0]; // Default to [0,0] if undefined
   
-        console.log(`Spot: ${spot.name}, Latitude: ${latitude}, Longitude: ${longitude}`);
+        return {
+          name: spot.name,
+          freeAccess: spot.freeAccess,
+          lastUpdate: spot.lastUpdate || null, // Store lastUpdate properly
+          address: spot.address || "Address not available", // Fetch address from backend
+          coordinates: [latitude, longitude], // Ensure correct order
+          spotsAvailable: 0,
+          accessibleSpots: spot.freeAccess,
+          distance: userLocation
+            ? calculateDistance(userLocation.latitude, userLocation.longitude, longitude, latitude)
+            : Infinity, // If no user location, set distance to Infinity
+        };
+      });
+      formattedData = formattedData.filter((spot) => spot.distance <= 25);
+      // Sort by distance (closest first)
+      formattedData.sort((a, b) => a.distance - b.distance);
+  
+      setParkingSpots(formattedData);
+    } catch (err) {
+      console.error("Error fetching parking spots:", err);
+      setError("Failed to load parking spots. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const searchLocations = async (query: string) => {
+    if (!query.trim()) {
+      fetchParkingSpots();
+      return;
+    }
+  
+    setIsLoading(true);
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/public/getALocation?name=${query}`);
+  
+      // Transform the backend data to match your frontend model
+      const formattedData = response.data.map((spot: any) => {
+        const [longitude, latitude] = spot.coordinates || [0, 0]; // Default to [0,0] if undefined
   
         return {
           name: spot.name,
           freeAccess: spot.freeAccess,
           lastUpdate: spot.lastUpdate,
           coordinates: [latitude, longitude], // Ensure correct order
-          address: "Retrieved from MongoDB",
+          address: "Retrieved from search",
           spotsAvailable: 0,
           accessibleSpots: spot.freeAccess,
         };
       });
-      
-      setParkingSpots(formattedData);
-    } catch (err) {
-      console.error("Error fetching parking spots:", err);
-      setError("Failed to load parking spots. Please try again.");
-      
-      // For development, you might want to fallback to dummy data if API fails
-      setParkingSpots(fakeParkingData);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // For search functionality
-  const searchLocations = async (query: string) => {
-    if (!query.trim()) {
-      fetchParkingSpots();
-      return;
-    }
-    
-    setIsLoading(true);
-    try {
-      const response = await axios.get(`${API_BASE_URL}/api/public/getALocation?name=${query}`);
-      
-      // Transform the backend data to match your frontend model
-      const formattedData = response.data.map((spot: any) => ({
-        
-        name: spot.name,
-        freeAccess: spot.freeAccess,
-        lastUpdate: spot.lastUpdate,
-        coordinates: spot.coordinates,
-        address: "Retrieved from search", 
-        spotsAvailable: 0,
-        accessibleSpots: spot.freeAccess,
-      }));
-      
+  
       setParkingSpots(formattedData);
     } catch (err) {
       console.error("Error searching locations:", err);
@@ -152,6 +281,7 @@ export default function HomeScreen() {
       setIsLoading(false);
     }
   };
+  
   
   // Fake parking data as fallback
   const fakeParkingData: ParkingSpot[] = [
@@ -250,30 +380,28 @@ export default function HomeScreen() {
   // Helper function to format date/time
   const formatLastUpdated = (lastUpdate: string | null) => {
     if (!lastUpdate) return "Unknown";
-    
+  
     try {
       const updateDate = new Date(lastUpdate);
       const now = new Date();
       const diffMinutes = Math.floor((now.getTime() - updateDate.getTime()) / (1000 * 60));
-      
+  
       if (diffMinutes < 1) return "Just now";
       if (diffMinutes === 1) return "1 minute ago";
       if (diffMinutes < 60) return `${diffMinutes} minutes ago`;
-      
-      const diffHours = Math.floor(diffMinutes / 60);
-      if (diffHours === 1) return "1 hour ago";
-      if (diffHours < 24) return `${diffHours} hours ago`;
-      
-      return updateDate.toLocaleDateString();
+  
+      return updateDate.toLocaleDateString(); // Show the date if older than a day
     } catch (e) {
       return "Invalid date";
     }
   };
+  
 
   return (
     <View style={styles.container}>
-      {/* Map */}
+      {/* Map distance */}
       <MapView
+      ref={mapRef}
         style={styles.map}
         initialRegion={{
           latitude: 49.2665,
@@ -281,7 +409,15 @@ export default function HomeScreen() {
           latitudeDelta: 0.01,
           longitudeDelta: 0.01,
         }}
-      >
+      >{userLocation && (
+  <Marker
+    coordinate={userLocation}
+    title="You are here"
+    pinColor="blue"
+  >
+    <Ionicons name="location" size={30} color="#4285F4" />
+  </Marker>
+)}
         {parkingSpots.map((spot, index) => (
           <Marker
             key={spot.id || index}
@@ -332,8 +468,8 @@ export default function HomeScreen() {
             style={styles.menuItem}
             onPress={() => handleMenuAction('login')}
           >
-            <Ionicons name="person" size={20} color="#333" style={styles.menuIcon} />
-            <Text style={styles.menuText}>Login</Text>
+            <Ionicons name="add" size={20} color="#333" style={styles.menuIcon} />
+            <Text style={styles.menuText}>Add Location</Text>
           </TouchableOpacity>
           
           <View style={styles.menuDivider} />
@@ -349,7 +485,7 @@ export default function HomeScreen() {
       )}
 
       {/* Current Location Button */}
-      <TouchableOpacity style={styles.locationButton}>
+      <TouchableOpacity style={styles.locationButton} onPress={goToUserLocation}>
         <Ionicons name="navigate" size={24} color="#4CAF50" />
       </TouchableOpacity>
 
@@ -390,95 +526,144 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
         ) : (
-          <ScrollView style={styles.panelContent}>
+          <ScrollView ref={scrollViewRef} style={styles.panelContent}>
             {parkingSpots.length === 0 ? (
               <View style={styles.emptyContainer}>
                 <Text style={styles.emptyText}>No parking spots found</Text>
               </View>
             ) : (
               parkingSpots.map((spot, index) => (
-                <View key={spot.id || index} style={styles.parkingItem}>
+                <TouchableOpacity 
+                  key={spot.id || index} 
+                  style={styles.parkingItem} 
+                  onPress={() => goToParkingSpot(spot.coordinates[1], spot.coordinates[0], index)}
+                >
                   <Text style={styles.parkingTitle}>{spot.name}</Text>
                   <Text style={styles.parkingAddress}>{spot.address || "Address not available"}</Text>
                   
-                  {spot.lastUpdate && (
-                    <Text style={styles.lastUpdatedText}>
-                      Last updated: {formatLastUpdated(spot.lastUpdate)}
-                    </Text>
-                  )}
-                  
+                  {/* <Text style={styles.distanceText}>
+                  Distance: {spot.distance !== undefined ? spot.distance.toFixed(2) : "Unknown"} km
+                  </Text> */}
+                  {/* Remove this entire block
                   {spot.spotsAvailable !== undefined && (
-                    <View style={styles.spotInfoContainer}>
-                      <View style={styles.spotIconContainer}>
-                        <Text style={styles.spotIconText}>P</Text>
-                      </View>
-                      <Text style={styles.spotText}>{spot.spotsAvailable} spots available</Text>
-                    </View>
-                  )}
-                  
-                  <View style={styles.accessibleInfoContainer}>
-                    <View style={styles.accessibleIconContainer}>
-                      <Text style={styles.accessibleIconText}>A</Text>
-                    </View>
-                    <Text style={styles.spotText}>
-                      {spot.freeAccess} accessible spots available
-                    </Text>
+                <View style={styles.spotInfoContainer}>
+                 <View style={styles.spotIconContainer}>
+                   <Text style={styles.spotIconText}>P</Text>
                   </View>
+                  <Text style={styles.spotText}>{spot.spotsAvailable} spots available</Text>
                 </View>
-              ))
+              )}
+            */}
+
+            {/* Keep only this block */}
+            <View style={styles.accessibleInfoContainer}>
+              <View style={styles.accessibleIconContainer}>
+                <Text style={styles.accessibleIconText}>A</Text>
+              </View>
+              <Text style={styles.spotText}>
+                {spot.freeAccess} Handicap spots available
+             </Text>
+            </View>
+            
+            {/* 🟢 Last Updated Time */}
+        
+          <Text style={styles.lastUpdatedText}>
+            Last updated: {formatLastUpdated(spot.lastUpdate)}
+          </Text>
+      </TouchableOpacity>
+             ))
             )}
           </ScrollView>
         )}
       </Animated.View>
 
-      {/* Login Modal */}
-      <Modal
-        visible={loginModalVisible}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setLoginModalVisible(false)}
+      {/* Add location Modal */}
+      {/* Add Location Modal */}
+<Modal
+  visible={loginModalVisible}
+  transparent={true}
+  animationType="fade"
+  onRequestClose={() => setLoginModalVisible(false)}
+>
+  <TouchableOpacity 
+    style={styles.modalOverlay} 
+    activeOpacity={1} 
+    onPress={() => setLoginModalVisible(false)}
+  >
+    <TouchableOpacity 
+      style={styles.modalContent}
+      activeOpacity={1}
+      onPress={(e) => e.stopPropagation()}
+    >
+      <Text style={styles.modalTitle}>Location Name</Text>
+      <TextInput
+        style={styles.modalInput}
+        placeholder="Enter Location Name"
+        placeholderTextColor="#999"
+        value={locationName}
+        onChangeText={setLocationName}
+      />
+
+      <Text style={styles.modalTitle}>Address</Text>
+      <TextInput
+        style={styles.modalInput}
+        placeholder="1234 Sample Address, everywhere"
+        placeholderTextColor="#999"
+        value={locationAddress}
+        onChangeText={setLocationAddress}
+      />
+
+      <Text style={styles.modalTitle}>Total Parking Spots</Text>
+      <TextInput
+        style={styles.modalInput}
+        placeholder="Enter Total Spots"
+        placeholderTextColor="#999"
+        keyboardType="numeric"
+        value={totalSpots}
+        onChangeText={setTotalSpots}
+      />
+
+      <Text style={styles.modalTitle}>Handicap Accessible Spots</Text>
+      <TextInput
+        style={styles.modalInput}
+        placeholder="Enter Accessible Spots"
+        placeholderTextColor="#999"
+        keyboardType="numeric"
+        value={accessibleSpots}
+        onChangeText={setAccessibleSpots}
+      />
+    <Text style={styles.modalTitle}>Latitude</Text>
+<TextInput
+  style={styles.modalInput}
+  placeholder="Enter Latitude"
+  placeholderTextColor="#999"
+  keyboardType="numeric"
+  value={latitude}
+  onChangeText={(text) => setLatitude(text)}
+/>
+
+<Text style={styles.modalTitle}>Longitude</Text>
+<TextInput
+  style={styles.modalInput}
+  placeholder="Enter Longitude"
+  placeholderTextColor="#999"
+  keyboardType="numeric"
+  value={longitude}
+  onChangeText={(text) => setLongitude(text)}
+/>
+
+      
+ 
+      <TouchableOpacity 
+        style={styles.signInButton} 
+        onPress={addNewLocation} // Call function when button is pressed
       >
-        <TouchableOpacity 
-          style={styles.modalOverlay} 
-          activeOpacity={1} 
-          onPress={() => setLoginModalVisible(false)}
-        >
-          <TouchableOpacity 
-            style={styles.modalContent}
-            activeOpacity={1}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <Text style={styles.modalTitle}>Email</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Email"
-              placeholderTextColor="#999"
-            />
-            
-            <Text style={styles.modalTitle}>Password</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Password"
-              placeholderTextColor="#999"
-              secureTextEntry
-            />
-            
-            <TouchableOpacity 
-              style={styles.signInButton} 
-              onPress={() => setLoginModalVisible(false)}
-            >
-              <Text style={styles.signInButtonText}>Sign In</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.signUpButton} 
-              onPress={() => console.log("Sign up business")}
-            >
-              <Text style={styles.signUpButtonText}>Sign Up Your Business</Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
+        <Text style={styles.signInButtonText}>Add Location</Text>
+      </TouchableOpacity>
+    </TouchableOpacity>
+  </TouchableOpacity>
+</Modal>
+
     </View>
   );
 }
